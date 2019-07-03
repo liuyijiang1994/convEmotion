@@ -7,6 +7,11 @@ import utils
 import numpy as np, pickle, time, argparse
 from dataloader import DailyDialoguePadCollate, DailyDialogueDataset
 import adabound
+from model.hierarchical_lstm_model import Hierarchichal_LSTM_Model
+from utils import weight_init
+from data_process.data_helper import get_label_weight
+from sklearn.metrics import f1_score, confusion_matrix, accuracy_score, classification_report, \
+    precision_recall_fscore_support
 
 torch.manual_seed(233)
 data_folder = 'data/emory/'
@@ -85,9 +90,9 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
                user_labels: batch_sz, sent_num
                      label: batch_sz, sent_num
         '''
-        log_prob, alpha, alpha_f, alpha_b = model(input_sequence, qmask, umask)
-        # log_prob: seq_len, batch, n_classes
-        lp_ = log_prob.transpose(0, 1).contiguous().view(-1, log_prob.size()[2])  # batch*seq_len, n_classes
+        log_prob, alpha, alpha_f, alpha_b = model(input_sequence, user_labels, umask)
+        # log_prob: batch,sent_num,class
+        lp_ = log_prob.view(-1, log_prob.size()[2])  # batch*seq_len, n_classes
         labels_ = label.view(-1)  # batch*seq_len
         loss = loss_function(lp_, labels_)
         # if train:
@@ -119,10 +124,6 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
         return float('nan'), float('nan'), [], [], [], float('nan'), []
 
     uwa, acc, f1, acc_map = utils.evaluate(preds, labels)
-    # avg_loss = round(np.sum(losses) / np.sum(masks), 4)
-    # avg_accuracy = round(accuracy_score(labels, preds, sample_weight=masks) * 100, 2)
-    # avg_fscore = round(f1_score(labels, preds, sample_weight=masks, average='micro', labels=[0, 2, 3, 4, 5, 6]) * 100,
-    #                    2)
     return loss_all / len(dataloader), uwa, acc, f1, labels, preds, masks, [alphas, alphas_f, alphas_b, vids]
 
 
@@ -176,8 +177,9 @@ if __name__ == '__main__':
     D_e = 256
     D_h = 256
     D_a = 128
+    lstm_hidden = 256
     dropout = 0.5
-    PATIENCE_CONSTANT = 30
+    PATIENCE_CONSTANT = 15
     patience = PATIENCE_CONSTANT
 
     glv_pretrained = np.load(open(f'{data_folder}glv_embedding_matrix', 'rb'))
@@ -185,26 +187,19 @@ if __name__ == '__main__':
 
     user_label_encoder = pickle.load(open(f'{data_folder}user_label_encoder.pkl', 'rb'))
     user_size = len(user_label_encoder)
-    # glv_pretrained[0, :] = np.random.rand(embedding_dim)
-    model = DailyDialogueModel(D_m, D_g, D_p, D_e, D_h,
-                               vocab_size=vocab_size,
-                               user_size=user_size,
-                               n_classes=n_classes,
-                               embedding_dim=embedding_dim,
-                               feat_output_size=feat_output_size,
-                               feat_dropout=dropout,
-                               listener_state=args.active_listener,
-                               context_attention=args.attention,
-                               dropout_rec=args.rec_dropout,
-                               dropout=args.dropout,
-                               dropout_dialogue_rnn=0.2,
-                               att2=False)
+    model = Hierarchichal_LSTM_Model(vocab_size=vocab_size,
+                                     embedding_dim=embedding_dim,
+                                     word_lstm_hidden=128,
+                                     sent_lstm_hidden=128,
+                                     n_classes=7)
     model.apply(weight_init)
-    model.init_pretrained_embeddings(glv_pretrained)
+    model.init_pretrained_embeddings_from_numpy(glv_pretrained)
     if cuda:
         model.to(device)
-
-    loss_weights = torch.FloatTensor(get_label_weight()).to(device)
+    train_loader, valid_loader, test_loader = get_DailyDialogue_loaders(f'{data_folder}daily_dialogue.pkl',
+                                                                        user_size=user_size,
+                                                                        batch_size=batch_size, num_workers=0)
+    loss_weights = torch.FloatTensor(get_label_weight(train_loader)).to(device)
     # loss_weights = torch.FloatTensor(report('data/EmotionPush/emotionpush_train.json')).to(device)
     print('loss_weights', loss_weights)
     loss_function = nn.CrossEntropyLoss(weight=loss_weights, ignore_index=-1)
@@ -215,10 +210,6 @@ if __name__ == '__main__':
     #                        weight_decay=args.l2)
     optimizer = adabound.AdaBound(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001, final_lr=0.1,
                                   weight_decay=1e-4)
-
-    train_loader, valid_loader, test_loader = get_DailyDialogue_loaders(f'{data_folder}daily_dialogue.pkl',
-                                                                        user_size=user_size,
-                                                                        batch_size=batch_size, num_workers=0)
 
     best_loss, best_label, best_pred, best_mask = 999, None, None, None
 

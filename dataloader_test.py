@@ -1,9 +1,8 @@
-from train import get_DailyDialogue_loaders, process_data_loader
 import pickle
-import torch
+from train import get_DailyDialogue_loaders, process_data_loader
 
 data_folder = f'data/emory/'
-batch_size = 2
+batch_size = 4
 user_label_encoder = pickle.load(open(f'{data_folder}speaker_label_encoder.pkl', 'rb'))
 user_size = len(user_label_encoder)
 train_loader, valid_loader, test_loader = get_DailyDialogue_loaders(f'{data_folder}daily_dialogue.pkl', user_size,
@@ -20,11 +19,12 @@ for data in train_loader:
                      label: batch_sz, sent_num
                      users: batch_sz, sent_num
     '''
-    for i in input_sequence, qmask, umasks, users, label:
-        print(i.shape)
-    break
-    print(qmask.shape)
+    # for i in input_sequence, qmask, umasks, users, label:
+    #     print(i.shape)
+    # break
     input_sequence = input_sequence.transpose(0, 1)
+    print(users)
+    break
     # qmask = qmask.transpose(0, 1)
     # for texts, emotions in zip(input_sequence, label):
     #     texts = texts.cpu().numpy()

@@ -35,11 +35,11 @@ def create_utterances(filename, split):
                         utterance['utterance'] = 'noword'
                     sentences.append(utterance['transcript'])
                     emotion_labels.append(utterance['emotion'])
-                    speakers.append(utterance['speakers'][0])
+                    speakers.append(sp2idx[utterance['speakers'][0]])
                     act_labels.append('0')
                     conv_id.append(split[:2] + c_id)
                     utt_id.append(split[:2] + utterance['utterance_id'])
-                    user_labels.append(sp2idx[utterance['speakers'][0]])
+                    user_labels.append(utterance['speakers'][0])
 
     data = pd.DataFrame(sentences, columns=['sentence'])
     data['sentence'] = data['sentence'].apply(lambda x: preprocess_text(x))
@@ -87,35 +87,36 @@ if __name__ == '__main__':
 
     ## encode the emotion and dialog act labels ##
     all_act_labels, all_emotion_labels = set(train_data['act_label']), set(train_data['emotion_label'])
-    all_speaker = train_data['speaker']
-    all_speaker = Counter(all_speaker)
-    all_speaker_labels = ['<unk>']
-    for speaker, cont in all_speaker.items():
+    all_user = train_data['user_label']
+    all_user = Counter(all_user)
+    all_user_labels = ['<pad>', '<unk>']
+    for user, cont in all_user.items():
         if cont >= min_user_cont:
-            all_speaker_labels.append(speaker)
-
-    speaker_label_encoder, speaker_label_decoder, act_label_encoder, emotion_label_encoder, act_label_decoder, emotion_label_decoder = {}, {}, {}, {}, {}, {}
-    for i, label in enumerate(all_speaker_labels):
-        speaker_label_encoder[label] = i
-        speaker_label_decoder[i] = label
+            all_user_labels.append(user)
+    act_label_encoder, emotion_label_encoder, act_label_decoder, emotion_label_decoder = {}, {}, {}, {}
+    user_label_encoder, user_label_decoder = {}, {}
+    for i, label in enumerate(all_user_labels):
+        user_label_encoder[label] = i
+        user_label_decoder[i] = label
 
     for i, label in enumerate(all_act_labels):
         act_label_encoder[label] = i
         act_label_decoder[i] = label
 
+    # for i, label in enumerate(all_emotion_labels):
+    #     emotion_label_encoder[label] = i
+    #     emotion_label_decoder[i] = label
     emotion_label_encoder = constant.EMOTION7
-
     emotion_label_decoder = {v: k for k, v in emotion_label_encoder.items()}
     pickle.dump(act_label_encoder, open(f'{folder_path}/act_label_encoder.pkl', 'wb'))
     pickle.dump(act_label_decoder, open(f'{folder_path}/act_label_decoder.pkl', 'wb'))
     pickle.dump(emotion_label_encoder, open(f'{folder_path}/emotion_label_encoder.pkl', 'wb'))
     pickle.dump(emotion_label_decoder, open(f'{folder_path}/emotion_label_decoder.pkl', 'wb'))
-    pickle.dump(speaker_label_encoder, open(f'{folder_path}/speaker_label_encoder.pkl', 'wb'))
-    pickle.dump(speaker_label_decoder, open(f'{folder_path}/speaker_label_decoder.pkl', 'wb'))
+    pickle.dump(user_label_encoder, open(f'{folder_path}/user_label_encoder.pkl', 'wb'))
+    pickle.dump(user_label_decoder, open(f'{folder_path}/user_label_decoder.pkl', 'wb'))
     print('act_label:', len(act_label_encoder))
     print('emotion_label:', len(emotion_label_encoder))
-    print('speaker_label:', len(speaker_label_encoder))
-
+    print('user_label:', len(user_label_encoder))
     train_data['encoded_act_label'] = train_data['act_label'].map(lambda x: encode_labels(act_label_encoder, x))
     test_data['encoded_act_label'] = test_data['act_label'].map(lambda x: encode_labels(act_label_encoder, x))
     valid_data['encoded_act_label'] = valid_data['act_label'].map(lambda x: encode_labels(act_label_encoder, x))
@@ -127,12 +128,12 @@ if __name__ == '__main__':
     valid_data['encoded_emotion_label'] = valid_data['emotion_label'].map(
         lambda x: encode_labels(emotion_label_encoder, x))
 
-    train_data['encoded_speaker_label'] = train_data['speaker'].map(
-        lambda x: encode_labels(speaker_label_encoder, x, '<unk>'))
-    test_data['encoded_speaker_label'] = test_data['speaker'].map(
-        lambda x: encode_labels(speaker_label_encoder, x, '<unk>'))
-    valid_data['encoded_speaker_label'] = valid_data['speaker'].map(
-        lambda x: encode_labels(speaker_label_encoder, x, '<unk>'))
+    train_data['encoded_user_label'] = train_data['user_label'].map(
+        lambda x: encode_labels(user_label_encoder, x, '<unk>'))
+    test_data['encoded_user_label'] = test_data['user_label'].map(
+        lambda x: encode_labels(user_label_encoder, x, '<unk>'))
+    valid_data['encoded_user_label'] = valid_data['user_label'].map(
+        lambda x: encode_labels(user_label_encoder, x, '<unk>'))
 
     ## tokenize all sentences ##
     all_text = list(train_data['sentence'])
@@ -168,12 +169,12 @@ if __name__ == '__main__':
     for item in list(train_conv_ids) + list(test_conv_ids) + list(valid_conv_ids):
         df = all_data[all_data['conv_id'] == item]
 
-        convSpeakers[item] = list(df['encoded_speaker_label'])
+        convSpeakers[item] = list(df['speaker'])
         convInputSequence[item] = list(df['sequence'])
         convInputMaxSequenceLength[item] = max(list(df['sentence_length']))
         convActLabels[item] = list(df['encoded_act_label'])
         convEmotionLabels[item] = list(df['encoded_emotion_label'])
-        convUserLabel[item] = list(df['user_label'])
+        convUserLabel[item] = list(df['encoded_user_label'])
     pickle.dump(
         [convSpeakers, convInputSequence, convInputMaxSequenceLength, convActLabels, convEmotionLabels, convUserLabel,
          train_conv_ids, test_conv_ids, valid_conv_ids], open(f'{folder_path}/daily_dialogue.pkl', 'wb'))

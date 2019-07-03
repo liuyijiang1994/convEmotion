@@ -1,11 +1,11 @@
 import re
-from model import *
 import random
 import os
-import torch
-import time
 import numpy as np
 from sklearn.metrics import f1_score, classification_report
+import torch
+import torch.nn as nn
+import torch.nn.init as init
 
 
 def evaluate(pre, tar, show=False):
@@ -19,7 +19,7 @@ def evaluate(pre, tar, show=False):
     r_pre = []
     r_tar = []
     for p, t in zip(pre, tar):
-        if 0 <= t < 4:
+        if 0 <= t:
             r_pre.append(p)
             r_tar.append(t)
             all += 1
@@ -28,7 +28,7 @@ def evaluate(pre, tar, show=False):
     acc = acc / all
     f1, classify_report, classify_report_dict = report_result(r_pre, r_tar)
 
-    ks = [0, 1, 2, 3]
+    ks = [0, 1, 2, 3, 4, 5, 6]
     result_map = {k: {'acc': 0, 'all': 0} for k in ks}
 
     for p, t in zip(r_pre, r_tar):
@@ -37,9 +37,9 @@ def evaluate(pre, tar, show=False):
             result_map[t]['acc'] = result_map[t]['acc'] + 1
 
     uwa = 0
-    for t in range(4):
+    for t in range(7):
         uwa += result_map[t]['acc'] / result_map[t]['all']
-    uwa /= 4
+    uwa /= 7
     if show:
         print('\n\nclassify_report:\n', classify_report)
         for t in ks:
@@ -51,7 +51,7 @@ def evaluate(pre, tar, show=False):
 def report_result(y_pred, y_true):
     y_true = np.array(y_true, dtype=int)
     y_pred = np.array(y_pred, dtype=int)
-    classify_report = classification_report(y_true, y_pred)
+    classify_report = classification_report(y_true, y_pred, labels=[0, 1, 2, 3, 4, 5, 6])
     classify_report_dict = classification_report(y_true, y_pred, output_dict=True)
     f1 = f1_score(y_true, y_pred, average="macro")
     return f1, classify_report, classify_report_dict
@@ -195,3 +195,81 @@ def f1(p, r):
     if p + r:
         return 2 * p * r / (p + r)
     return 0
+
+
+def weight_init(m):
+    '''
+    Usage:
+        model = Model()
+        model.apply(weight_init)
+    '''
+    if isinstance(m, nn.Conv1d):
+        init.normal_(m.weight.data)
+        if m.bias is not None:
+            init.normal_(m.bias.data)
+    elif isinstance(m, nn.Conv2d):
+        init.xavier_normal_(m.weight.data)
+        if m.bias is not None:
+            init.normal_(m.bias.data)
+    elif isinstance(m, nn.Conv3d):
+        init.xavier_normal_(m.weight.data)
+        if m.bias is not None:
+            init.normal_(m.bias.data)
+    elif isinstance(m, nn.ConvTranspose1d):
+        init.normal_(m.weight.data)
+        if m.bias is not None:
+            init.normal_(m.bias.data)
+    elif isinstance(m, nn.ConvTranspose2d):
+        init.xavier_normal_(m.weight.data)
+        if m.bias is not None:
+            init.normal_(m.bias.data)
+    elif isinstance(m, nn.ConvTranspose3d):
+        init.xavier_normal_(m.weight.data)
+        if m.bias is not None:
+            init.normal_(m.bias.data)
+    elif isinstance(m, nn.BatchNorm1d):
+        init.normal_(m.weight.data, mean=1, std=0.02)
+        if m.bias is not None:
+            init.constant_(m.bias.data, 0)
+    elif isinstance(m, nn.BatchNorm2d):
+        init.normal_(m.weight.data, mean=1, std=0.02)
+        if m.bias is not None:
+            init.constant_(m.bias.data, 0)
+    elif isinstance(m, nn.BatchNorm3d):
+        init.normal_(m.weight.data, mean=1, std=0.02)
+        if m.bias is not None:
+            init.constant_(m.bias.data, 0)
+    elif isinstance(m, nn.Linear):
+        init.xavier_normal_(m.weight.data)
+        if m.bias is not None:
+            init.normal_(m.bias.data)
+    elif isinstance(m, nn.LSTM):
+        for param in m.parameters():
+            if len(param.shape) >= 2:
+                init.orthogonal_(param.data)
+            else:
+                init.normal_(param.data)
+    elif isinstance(m, nn.LSTMCell):
+        for param in m.parameters():
+            if len(param.shape) >= 2:
+                init.orthogonal_(param.data)
+            else:
+                init.normal_(param.data)
+    elif isinstance(m, nn.GRU):
+        for param in m.parameters():
+            if len(param.shape) >= 2:
+                init.orthogonal_(param.data)
+            else:
+                init.normal_(param.data)
+    elif isinstance(m, nn.GRUCell):
+        for param in m.parameters():
+            if len(param.shape) >= 2:
+                init.orthogonal_(param.data)
+            else:
+                init.normal_(param.data)
+
+
+if __name__ == '__main__':
+    y_pred = [1, 1, 0, 1, 1, 3, 2]
+    y_true = [1, 1, 1, 1, 0, 3, 2]
+    print(classification_report(y_true, y_pred, labels=[0, 1, 2, 3]))
